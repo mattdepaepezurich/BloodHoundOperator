@@ -79,7 +79,7 @@
     - [New-BHPathQuery](#new-bhpathquery)
     - [Remove-BHPathQuery](#remove-bhpathquery)
     - [Set-BHPathQuery](#set-bhpathquery)
-    - [Set-BHPathQueryPermission](#set-bhpathquerypermission)
+    - [Set-BHPathQueryScope](#set-bhpathqueryscope)
 - [BHClient](#bhclient)
     - [Get-BHClient](#get-bhclient)
     - [New-BHClient](#new-bhclient)
@@ -1715,7 +1715,17 @@ See `Help Import-BHCollector` for more info
 #### **Syntax:**
 
 ```PowerShell
-Get-BHDataPosture [[-DomainID] <string[]>] [[-Limit] <int>]
+Get-BHDataPosture -DomainID <string[]> [-Limit <int>] [-StartDate <datetime>] [-EndDate <datetime>] 
+
+Get-BHDataPosture -DomainID <string[]> [-Exposure] [-StartDate <datetime>] [-EndDate <datetime>] 
+
+Get-BHDataPosture -DomainID <string[]> [-Findings] [-StartDate <datetime>] [-EndDate <datetime>] 
+
+Get-BHDataPosture -DomainID <string[]> [-Assets] [-StartDate <datetime>] [-EndDate <datetime>] 
+
+Get-BHDataPosture -DomainID <string[]> [-GroupCompleteness] [-StartDate <datetime>] [-EndDate <datetime>] 
+
+Get-BHDataPosture -DomainID <string[]> [-SessionCompleteness] [-StartDate <datetime>] [-EndDate <datetime>]
 ```
 
 #### **Examples:**
@@ -2466,7 +2476,9 @@ Get-BHPathFinding [-DomainID] <string[]> -ListAvail
 
 Get-BHPathFinding [-DomainID] <string[]> -Detail [-FindingType <BHFindingType[]>] [-Limit <int>] 
 
-Get-BHPathFinding [-DomainID] <string[]> -Sparkline [-FindingType <BHFindingType[]>] [-StartDate <datetime>] [-EndDate <datetime>] [-Limit <int>]
+Get-BHPathFinding [-DomainID] <string[]> -Sparkline [-FindingType <BHFindingType[]>] [-StartDate <datetime>] [-EndDate <datetime>] [-Limit <int>] 
+
+Get-BHPathFinding [-DomainID] <string[]> -Trend [-StartDate <datetime>] [-EndDate <datetime>]
 ```
 
 #### **Examples:**
@@ -2788,20 +2800,20 @@ See `Help Set-BHQuery` for more info
 
 ---
 
-### **Set-BHPathQueryPermission**
+### **Set-BHPathQueryScope**
 
-**Alias**: `Set-BHQueryPermission`
+**Alias**: `Set-BHQueryScope`
 
-Set BloodHound Query Permissions
+Set BloodHound Query Scope
 
 #### **Syntax:**
 
 ```PowerShell
-Set-BHPathQueryPermission [-ID] <int> -Public 
+Set-BHPathQueryScope [-ID] <int> -Public 
 
-Set-BHPathQueryPermission [-ID] <int> -Private 
+Set-BHPathQueryScope [-ID] <int> -Private 
 
-Set-BHPathQueryPermission [-ID] <int> -Share <string[]> [-Remove]
+Set-BHPathQueryScope [-ID] <int> -Share <string[]> [-Remove]
 ```
 
 #### **Examples:**
@@ -2809,26 +2821,26 @@ Set-BHPathQueryPermission [-ID] <int> -Share <string[]> [-Remove]
 ```PowerShell
 -------------------------- EXAMPLE 1 --------------------------
 
-PS > Set-BHQueryPermission -ID 123 -Public
+PS > Set-BHQueryScope -ID 123 -Public
 
 
 -------------------------- EXAMPLE 2 --------------------------
 
-PS > Set-BHQueryPermission -ID 123 -Private
+PS > Set-BHQueryScope -ID 123 -Private
 
 
 -------------------------- EXAMPLE 3 --------------------------
 
-Set-BHQueryPermission -ID 123 -Share <UserID[]>
+Set-BHQueryScope -ID 123 -Share <UserID[]>
 
 
 -------------------------- EXAMPLE 4 --------------------------
 
-Set-BHQueryPermission -ID 123 -Share <UserID[]>-Remove
+Set-BHQueryScope -ID 123 -Share <UserID[]>-Remove
 
 ```
 
-See `Help Set-BHQueryPermission` for more info
+See `Help Set-BHQueryScope` for more info
 
 </br>
 
@@ -3282,6 +3294,6 @@ See `Help Set-BHEvent` for more info
 
 </br>
 
-Wednesday, October 16, 2024 5:06:55 AM
+Monday, January 27, 2025 12:59:28 PM
 
 

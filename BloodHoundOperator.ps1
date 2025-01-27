@@ -1,5 +1,12 @@
 ## BloodHoundOperator
-# Wednesday, October 16, 2024 3:07:03 AM
+# Monday, January 27, 2025 11:59:37 AM
+# Add finding trend
+# Add Posture history
+# Add Saved Queries cmdlets
+# Fix EdgeFilter
+# Fix various
+
+####################################################################
 
 ## BloodHound Operator - BHComposer (BHCE Only)
 # New-BHComposer
@@ -655,10 +662,15 @@ function New-BHSession{
    
     BloodHound Dog Whisperer - @SadProcessor 2024
 ")  
-    # Port & Proto
+    # Server, Port & Proto
     if($Server -match "127.0.0.1|localhost" -AND -Not$Port){$Port='8080'}
     if($Server -match "127.0.0.1|localhost" -AND -Not$Protocol){$Protocol='http'}
     if($Server -ne 'localhost' -AND -Not$Protocol){$Protocol='https'}
+    if($Server -match "^https://"){$Server=$Server-replace"^https\:\/\/",'';$Protocol='https'}
+    if($Server -match "^http://"){$Server=$Server-replace"^http\:\/\/",'';$Protocol='http'}
+    if($Server -notmatch "^http://|^https://" -AND $Server -notmatch "\." -AND $Server -notmatch "127.0.0.1|localhost"){
+        $Server+='.bloodhoundenterprise.io'
+        }
     # BHFilter
     if(-Not$BHFilter){$Script:BHFilter = Get-BHPathFilter -ListAll | Select Platform,Group,@{n='x';e={'x'} },Edge}
     # BHSession
@@ -2808,8 +2820,8 @@ function Get-BHNode{
                 RDPRights                    {"MATCH p=(:$Label{objectid:'$objID'})-[:MemberOf|CanRDP*1..]->(x:Computer)"}
                 RDPUsers                     {"MATCH p=shortestPath((x:User)-[:MemberOf|CanRDP*1..]->(:$Label{objectid:'$objID'}))"}
                 Sessions                     {Switch($Label){
-                                                Computer{"MATCH(:$Label{objectid:'$ObjID'})-[:HasSession]->(x:User)"}
-                                                Default{"MATCH(:$Label{objectid:'$ObjID'})-[:MemberOf|HasSession*1..]->(x:User)"} # TEST /!\
+                                                Computer{"MATCH p=(:$Label{objectid:'$ObjID'})-[:HasSession]->(x:User)"}
+                                                Default{"MATCH p=(:$Label{objectid:'$ObjID'})-[:MemberOf|HasSession*1..]->(x:User)"} # TEST /!\
                                                 }}
                 SQLAdminRights               {"MATCH p=(:$Label{objectid:'$objID'})-[:MemberOf|SQLAdmin*1..]->(x:Computer)"}
                 SQLAdmins                    {"MATCH p=shortestPath((x:User)-[:MemberOf|SQLDamin*1..]->(:$Label{objectid:'$objID'}))"}
@@ -3148,6 +3160,7 @@ enum BHEdge{
     ExecuteDCOM
     SQLAdmin
     # ADCredentialAccess
+    CoerceToTGT
     DCSync
     DumpSMSAPassword
     HasSession
@@ -3196,7 +3209,7 @@ enum BHEdge{
     AZNodeResourceGroup
     AZPrivilegedAuthAdmin
     AZPrivilegedRoleAdmin
-    AZRunAs
+    AZRunsAs
     # AZADObjectBasic
     AZAddMembers
     AZAddOwner
@@ -3271,6 +3284,7 @@ function Get-BHPathFilter{
         [PSCustomObject]@{Platform='AD'; Group='ADLateralMovement'; Edge='ExecuteDCOM'}
         [PSCustomObject]@{Platform='AD'; Group='ADLateralMovement'; Edge='SQLAdmin'}
         # Credential Access
+        [PSCustomObject]@{Platform='AD'; Group='ADCredentialAccess'; Edge='CoerceToTGT'}
         [PSCustomObject]@{Platform='AD'; Group='ADCredentialAccess'; Edge='DCSync'}
         [PSCustomObject]@{Platform='AD'; Group='ADCredentialAccess'; Edge='DumpSMSAPassword'}
         [PSCustomObject]@{Platform='AD'; Group='ADCredentialAccess'; Edge='HasSession'}
@@ -3319,7 +3333,7 @@ function Get-BHPathFilter{
         [PSCustomObject]@{Platform='AZ'; Group='AZStructure'; Edge='AZNodeResourceGroup'}
         [PSCustomObject]@{Platform='AZ'; Group='AZStructure'; Edge='AZPrivilegedAuthAdmin'}
         [PSCustomObject]@{Platform='AZ'; Group='AZStructure'; Edge='AZPrivilegedRoleAdmin'}
-        [PSCustomObject]@{Platform='AZ'; Group='AZStructure'; Edge='AZRunAs'}
+        [PSCustomObject]@{Platform='AZ'; Group='AZStructure'; Edge='AZRunsAs'}
         # AAD Obj Manipulation
         [PSCustomObject]@{Platform='AZ'; Group='AZADObjectBasic'; Edge='AZAddMembers'}
         [PSCustomObject]@{Platform='AZ'; Group='AZADObjectBasic'; Edge='AZAddOwner'}
@@ -3643,8 +3657,9 @@ function New-BHPathQuery{
     [Alias('New-BHQuery')]
     Param(
         [Parameter(Mandatory=1,ValueFromPipelineByPropertyName)][String]$Name,
-        #[Parameter(Mandatory=0,ValueFromPipelineByPropertyName)][String]$OID,
+        #[ValidateSet('AD','AZ')]
         #[Parameter(Mandatory=0,ValueFromPipelineByPropertyName)][String]$Platform,
+        #[Parameter(Mandatory=0,ValueFromPipelineByPropertyName)][String]$Category,
         [Parameter(Mandatory=0,ValueFromPipelineByPropertyName)][String]$Description='Custom Query',
         [Parameter(Mandatory=1,ValueFromPipelineByPropertyName)][String]$Query,
         [Parameter(Mandatory=0)][Switch]$PassThru
@@ -3655,10 +3670,10 @@ function New-BHPathQuery{
         $Body = @{
             name  = $Name
             description = $Description
-            query = $Query
+            query = $Query.trim()
             }
-        #if($OID){$Body['OID']=$OID}
         #if($Platform){$Body['Platform']=$Platform}
+        #if($Category){$Body['Category']=$Category}
         if($Description){$Body['Description']=$Description}
         $SQ = Invoke-BHAPI api/v2/saved-queries -Method POST -Body ($Body| ConvertTo-Json) -expand data
         if($PassThru){$SQ}
@@ -3696,20 +3711,20 @@ function Set-BHPathQuery{
 
 <#
 .SYNOPSIS
-    Set BloodHound Query Permissions
+    Set BloodHound Query Scope
 .DESCRIPTION
-    Set BloodHound saved query permissions
+    Set BloodHound saved query sharing scope
 .EXAMPLE
-    Set-BHQueryPermission -ID 123 -Public
+    Set-BHQueryScope -ID 123 -Public
 .EXAMPLE
-    Set-BHQueryPermission -ID 123 -Private
+    Set-BHQueryScope -ID 123 -Private
 .EXAMPLE
-    Set-BHQueryPermission -ID 123 -Share <UserID[]>
+    Set-BHQueryScope -ID 123 -Share <UserID[]>
 .EXAMPLE
-    Set-BHQueryPermission -ID 123 -Share <UserID[]> -Remove
+    Set-BHQueryScope -ID 123 -Share <UserID[]> -Remove
 #>
-function Set-BHPathQueryPermission{
-    [Alias('Set-BHQueryPermission')]
+function Set-BHPathQueryScope{
+    [Alias('Set-BHQueryScope')]
     Param(
         [Parameter(Mandatory=1,Position=0)][int]$ID,
         [Parameter(Mandatory=1,ParameterSetName='Public')][Switch]$Public,
@@ -3801,6 +3816,45 @@ Function Invoke-BHPathQuery{
         $Obj|Add-Member -MemberType NoteProperty -Name Timestamp -Value $QStart
         $Obj|Add-Member -MemberType NoteProperty -Name Duration -Value $($QStop-$QStart)
         if("result" -in ($Expand.split('.'))){$Obj|Select -Expand Result}else{$Obj}
+        }}
+    End{}
+    }
+#End
+
+Break
+
+<#
+.SYNOPSIS
+    New BloodHound Query
+.DESCRIPTION
+    New BloodHound saved query 
+.EXAMPLE
+    New-BHPathQuery -Name MySavedQuery -Query "MATCH (x:User) RETURN x LIMIT 1" -Desc "My Saved Query"
+#>
+function New-BHPathQuery{
+    [Alias('New-BHQuery')]
+    Param(
+        [Parameter(Mandatory=1,ValueFromPipelineByPropertyName)][String]$Name,
+        #[ValidateSet('AD','AZ')]
+        #[Parameter(Mandatory=0,ValueFromPipelineByPropertyName)][String]$Platform,
+        #[Parameter(Mandatory=0,ValueFromPipelineByPropertyName)][String]$Category,
+        [Parameter(Mandatory=0,ValueFromPipelineByPropertyName)][String]$Description='Custom Query',
+        [Parameter(Mandatory=1,ValueFromPipelineByPropertyName)][String]$Query,
+        [Parameter(Mandatory=0)][Switch]$PassThru
+        )
+    Begin{NoMultiSession}
+    Process{Foreach($Nm in $Name){
+        # Body
+        $Body = @{
+            name  = $Name
+            description = $Description
+            query = $Query.trim()
+            }
+        #if($Platform){$Body['Platform']=$Platform}
+        #if($Category){$Body['Category']=$Category}
+        if($Description){$Body['Description']=$Description}
+        $SQ = Invoke-BHAPI api/v2/saved-queries -Method POST -Body ($Body| ConvertTo-Json) -expand data
+        if($PassThru){$SQ}
         }}
     End{}
     }
@@ -4149,69 +4203,34 @@ function NoMultiSession{
 
 enum BHFindingType{
     AzureNonT0ManagedIdentityAssignment
-    AzureT0OwnerVMScaleSet
-    AzureT0ContributorVMScaleSet
-    AzureT0UserAccessAdminVMScaleSet
-    AzureT0VMContributorVMScaleSet
     AzureT0AddMembers
-    AzureT0VMAL
-    AzureT0UserAccessAdminKeyVault
-    AzureT0UserAccessAdminRG
-    AzureT0UserAccessAdminVM
-    AzureT0UserAccessAdminFunctionApp
     AzureT0AvereContributor
-    AzureT0CloudAppAdminsSP
-    AzureT0AppAdminsSP
-    AzureT0CloudAppAdminsApp
-    AzureT0AppAdminsApp
-    AzureT0ContribKeyVault
-    AzureT0ContribFunctionApp
-    AzureT0GetCertsKeyVault
-    AzureT0GetKeysKeyVault
-    AzureT0GetSecretsKeyVault
+    AzureT0GetCerts
+    AzureT0GetKeys
+    AzureT0GetSecrets
     AzureT0MGAddMember
     AzureT0MGAddOwner
     AzureT0MGAddSecret
     AzureT0MGGrantAppRoles
     AzureT0MGGrantRole
-    AzureT0OwnsAG
-    AzureT0OwnsApp
-    AzureT0OwnerKeyVault
-    AzureT0OwnerMG
-    AzureT0OwnerRG
-    AzureT0OwnsSP
-    AzureT0OwnerSub
-    AzureT0OwnerVM
-    AzureT0OwnerFunctionApp
     AzureT0ResetPassword
-    AzureT0TenantHybridIdentityAdminsSP
-    AzureT0TenantHybridIdentityAdminsApp
-    AzureT0UserAccessAdminMG
-    AzureT0UserAccessAdminSub
     AzureT0VMContributor
-    AzureT0AddSecretApp
-    AzureT0AddSecretSP
     AzureT0ExecuteCommand
-    AzureT0OwnerContainerRegistry
-    AzureT0UserAccessAdminContainerRegistry
-    AzureT0ContributorContainerRegistry
-    AzureT0OwnerManagedCluster
-    AzureT0UserAccessAdminManagedCluster
-    AzureT0ContributorManagedCluster
-    AzureT0AKSContributorManagedCluster
-    AzureT0ContributorWebApp
-    AzureT0OwnerWebApp
-    AzureT0UserAccessAdminWebApp
-    AzureT0WebsiteContributorWebApp
-    AzureT0OwnerLogicApp
-    AzureT0UserAccessAdminLogicApp
-    AzureT0ContributorLogicApp
-    AzureT0LogicAppContributorLogicApp
-    AzureT0UserAccessAdminAutomationAccount
-    AzureT0OwnerAutomationAccount
-    AzureT0AutomationAccountContributor
-    AzureT0AutomationAccountAutomationContributor
-    AzureT0WebsiteContributorFunctionApp
+    AzureT0LogicAppContributor
+    AzureT0AutomationContributor
+    AzureT0AddOwner
+    AzureT0Owns
+    AzureT0Owner
+    AzureT0AddSecret
+    AzureT0UserAccessAdministrator
+    AzureT0Contributor
+    AzureT0KeyVaultContributor
+    AzureT0WebsiteContributor
+    AzureT0VMAdminLogin
+    AzureT0CloudAppAdmin
+    AzureT0AppAdmin
+    AzureT0AKSContributor
+    AzureT0SyncedToEntraUser
     LargeDefaultGroupsForceChangePassword
     LargeDefaultGroupsAddMember
     LargeDefaultGroupsAddSelf
@@ -4228,6 +4247,7 @@ enum BHFindingType{
     LargeDefaultGroupsReadGMSA
     LargeDefaultGroupsReadLAPS
     LargeDefaultGroupsWriteDacl
+    LargeDefaultGroupsWriteGPLink
     LargeDefaultGroupsWriteOwner
     LargeDefaultGroupsAddKeyCredentialLink
     LargeDefaultGroupsWriteSPN
@@ -4254,27 +4274,13 @@ enum BHFindingType{
     T0DumpSMSA
     T0ReadLAPS
     T0WriteDACL
+    T0WriteGPLink
     T0WriteOwner
     T0WriteAccountRestrictions
     T0SyncLAPSPassword
     T0AddKeyCredentialLink
     T0WriteSPN
-    UnconstrainedAdmins
-    UnconstrainedAllowedToDelegate
-    UnconstrainedDCOM
-    UnconstrainedForceChangePassword
-    UnconstrainedGenericAll
-    UnconstrainedGenericWrite
-    UnconstrainedOwns
-    UnconstrainedPSRemote
-    UnconstrainedRDP
-    UnconstrainedReadLAPS
-    UnconstrainedSQLAdmin
-    UnconstrainedWriteDACL
-    UnconstrainedWriteOwner
-    UnconstrainedAddKeyCredentialLink
-    UnconstrainedWriteAccountRestrictions
-    UnconstrainedSyncLAPSPassword
+    T0CoerceToTGT
     NonT0DCSyncers
     T0MarkSensitive
     Kerberoasting
@@ -4289,6 +4295,8 @@ enum BHFindingType{
     T0ADCSESC9b
     T0ADCSESC10a
     T0ADCSESC10b
+    T0ADCSESC13
+    T0SyncedToADUser
     }
 #End
 
@@ -4364,12 +4372,16 @@ function Get-BHPathFinding{
         [Parameter(Mandatory,ParameterSetName='Avail')][Switch]$ListAvail,
         [Parameter(Mandatory,ParameterSetName='Detail')][Switch]$Detail,
         [Parameter(Mandatory,ParameterSetName='Spark')][Switch]$Sparkline,
+        [Parameter(Mandatory,ParameterSetName='Trend')][Switch]$Trend,
         [Parameter(ParameterSetName='Detail')]
         [Parameter(ParameterSetName='Spark')][Alias('Type')][BHFindingType[]]$FindingType,
+        [Parameter(ParameterSetName='Trend',Mandatory,ValueFromPipeline,ValueFromPipelineByPropertyName=1,Position=0)]
         [Parameter(ParameterSetName='Spark',Mandatory,ValueFromPipeline,ValueFromPipelineByPropertyName=1,Position=0)]
         [Parameter(ParameterSetName='Detail',Mandatory,ValueFromPipeline,ValueFromPipelineByPropertyName=1,Position=0)]
         [Parameter(ParameterSetName='Avail',Mandatory,ValueFromPipeline,ValueFromPipelineByPropertyName=1,Position=0)][Alias('ID','objectid')][String[]]$DomainID,
+        [Parameter(ParameterSetName='Trend')]
         [Parameter(ParameterSetName='Spark')][Datetime]$StartDate,
+        [Parameter(ParameterSetName='Trend')]
         [Parameter(ParameterSetName='Spark')][Datetime]$EndDate,
         [Parameter(ParameterSetName='Spark')]
         [Parameter(ParameterSetName='Detail')][Int]$Limit=$($BHSession|? x|select -last 1).limit
@@ -4392,6 +4404,11 @@ function Get-BHPathFinding{
                         $Out = BHAPI api/v2/domains/$DomID/sparkline -filter "finding=$fType",$qFilter -expand data
                         if($Limit){$Out |Select -first $Limit}else{$Out}
                         }
+                    }
+                Trend{[Array]$qFilter=@() ## /!\ Date filter /!\
+                    if($StartDate){$qFilter+="from=$($StartDate|ToBHDate)"}
+                    if($EndDate){$qFilter+="to=$($EndDate|ToBHDate)"}
+                    BHAPI api/v2/domains/$DomID/finding-trends -filter $qFilter
                     }
                 }}}
     End{}#######
@@ -4942,25 +4959,49 @@ function Remove-BHEvent{
     Get-BHDataPosture
 #>
 function Get-BHDataPosture{
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName='General')]
     [Alias('BHPosture')]
     Param(
-        [Parameter(ValueFromPipelineByPropertyName)][Alias('ID','ObjectID')][String[]]$DomainID,
-        #[Parameter()][Array]$Filter=@()
-        [Parameter()][Int]$Limit=1
+        [Parameter(Mandatory=1,ValueFromPipelineByPropertyName)][Alias('ID','ObjectID')][String[]]$DomainID,
+        [Parameter(ParameterSetName='Exposure')][Switch]$Exposure,
+        [Parameter(ParameterSetName='Finding')][Switch]$Findings,
+        [Parameter(ParameterSetName='Asset')][Switch]$Assets,
+        [Parameter(ParameterSetName='Group')][Switch]$GroupCompleteness,
+        [Parameter(ParameterSetName='Session')][Switch]$SessionCompleteness,
+        [Parameter(ParameterSetName='General')][Int]$Limit=1,
+        [Parameter(ParameterSetName='Exposure')]
+        [Parameter(ParameterSetName='Finding')]
+        [Parameter(ParameterSetName='Asset')]
+        [Parameter(ParameterSetName='Group')]
+        [Parameter(ParameterSetName='Session')]
+        [Parameter(ParameterSetName='General')][Alias('From')][Datetime]$StartDate,
+        [Parameter(ParameterSetName='Exposure')]
+        [Parameter(ParameterSetName='Finding')]
+        [Parameter(ParameterSetName='Asset')]
+        [Parameter(ParameterSetName='Group')]
+        [Parameter(ParameterSetName='Session')]
+        [Parameter(ParameterSetName='General')][Alias('To')][Datetime]$EndDate
         )
     Begin{BHEOnly
-        [Array]$qFilter=@()
-        $qfilter+="limit=$Limit"
+        [Array]$qFilter=@() ## /!\ Date filter /!\
+        if($StartDate){$qFilter+="from=$($StartDate|ToBHDate)"}
+        if($EndDate){$qFilter+="to=$($EndDate|ToBHDate)"}
         }
     Process{foreach($DomID in $DomainID){
-        [Array]$qFilter=@("limit=$Limit","domain_sid=eq:$DomID")
-        BHAPI api/v2/posture-stats -filter $qFilter -expand data}
-        }
-    End{if(-Not$DomainID){BHAPI api/v2/posture-stats -filter $qFilter -expand data}}
+        Switch($PSCmdlet.ParameterSetName){
+            General {
+                $qFilter+="limit=$Limit"
+                BHAPI api/v2/posture-stats -filter $qFilter,"domain_sid=eq:$DomID" -expand data
+                }
+            Exposure{BHAPI api/v2/domains/$DomID/posture-history/exposure -Filter $qfilter -expand data}
+            Finding {BHAPI api/v2/domains/$DomID/posture-history/findings -Filter $qfilter -expand data}
+            Asset   {BHAPI api/v2/domains/$DomID/posture-history/assets -Filter $qfilter -expand data}
+            Group   {BHAPI api/v2/domains/$DomID/posture-history/group_completeness -Filter $qfilter -expand data}
+            Session {BHAPI api/v2/domains/$DomID/posture-history/session_completeness -Filter $qfilter -expand data}
+            }}}
+    End{}###
     }
 #End
-
 
 # BHEOnly ################################################ BHEntityMeta
 
