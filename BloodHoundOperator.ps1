@@ -3821,7 +3821,6 @@ Function Invoke-BHPathQuery{
     }
 #End
 
-Break
 
 <#
 .SYNOPSIS
