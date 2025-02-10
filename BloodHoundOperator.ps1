@@ -1,10 +1,5 @@
 ## BloodHoundOperator
-# Monday, January 27, 2025 11:59:37 AM
-# Add finding trend
-# Add Posture history
-# Add Saved Queries cmdlets
-# Fix EdgeFilter
-# Fix various
+# Monday, February 10, 2025 10:00:45 AM
 
 ####################################################################
 
@@ -2098,9 +2093,10 @@ function Search-BHNode{
         $Key=$Key.replace(' ','+')
         $RL = if($exact){
             $Label = 'exact'
-            "api/v2/graph-search?query=$Key&limit=$limit"
+            "api/v2/graph-search?query=$Key"
             }
-        else{"api/v2/search?q=$key&limit=$Limit"}
+        else{"api/v2/search?q=$key"}
+        if($Limit){$RL+="&limit=$Limit"}
         if($Label){Foreach($Lbl in $Label){Invoke-BHAPI "$RL&type=$lbl" -dot data -SessionID $SessID}}
         else{Invoke-BHAPI $RL -dot data -SessionID $SessID}
         }}
@@ -2628,8 +2624,8 @@ function Get-BHNode{
         Return $Dico
         }
     Begin{Foreach($SessID in $SessionID){if($Search){foreach($Key in $Keyword){Search-BHNode $Label $Key -SessionID $SessID -limit $Limit |%{
-            if($DynP.Value){$_|Get-BHNode $Label -List $DynP.Value -Expand $Expand -AsPath:$ASPath -Cypher:$Cypher -limit $Limit -PropOnly:$PropOnly -SessionID $SessID}
-            else{$_|Get-BHNode $Label -Expand $Expand -AsPath:$ASPath -Cypher:$Cypher -limit $Limit -PropOnly:$PropOnly -SessionID $SessID}
+            if($DynP.Value){$_|Get-BHNode $Label -List $DynP.Value -Expand $Expand -AsPath:$ASPath -Cypher:$Cypher -limit $Null -PropOnly:$PropOnly -SessionID $SessID}
+            else{$_|Get-BHNode $Label -Expand $Expand -AsPath:$ASPath -Cypher:$Cypher -limit $Null -PropOnly:$PropOnly -SessionID $SessID}
             }}}}}
     Process{Foreach($SessID in $SessionID){Foreach($ObjID in $ObjectID){
         $URL = Switch -regex ($Label){
@@ -2737,7 +2733,7 @@ function Get-BHNode{
             AllReaders                   {'&related_entity_type=all-readers'}
             #Default                      {}
             }
-        $URL+=if($URL -match 'azure'){"&limit=$Limit"}else{"?limit=$Limit"}
+        if($Limit){$URL+=if($URL -match 'azure'){"&limit=$Limit"}else{"?limit=$Limit"}}
         if($PropOnly){$URL+="&counts=false"}
         if($DynP.Value -AND ($AsPath -OR $Cypher)){
             # EdgeList
@@ -4362,6 +4358,8 @@ function Start-BHPathFinding{
     BHFinding -ListAvail -DomainID $ID
 .EXAMPLE
     BHFinding -Detail -DomainID $ID -Type Kerberoasting
+.EXAMPLE
+    BHSearch Domain | BHFinding -Trend -Verbose -start (date).adddays(-10)
 #>
 function Get-BHPathFinding{
     [CmdletBinding(DefaultParameterSetName='ListAll')]
@@ -4386,10 +4384,11 @@ function Get-BHPathFinding{
         [Parameter(ParameterSetName='Detail')][Int]$Limit=$($BHSession|? x|select -last 1).limit
         )
     Begin{BHEOnly
+        $DomList=[Collections.ArrayList]@()
         if($PSCmdlet.ParameterSetName -eq 'ListAll'){BHAPI api/v2/attack-path-types -expand data}
         }
     Process{Foreach($DomID in $DomainID){
-        $FindType = if(-Not$FindingType){BHAPI api/v2/domains/$DomID/available-types -expand data}else{$FindingType}
+        $FindType = if(-Not$FindingType -AND -Not$PSCmdlet.ParameterSetName -eq 'trend'){BHAPI api/v2/domains/$DomID/available-types -expand data}else{$FindingType}
         Switch($PSCmdlet.ParameterSetName){
                 Avail {$FindType}
                 Detail{[Array]$qFilter=@()
@@ -4404,13 +4403,15 @@ function Get-BHPathFinding{
                         if($Limit){$Out |Select -first $Limit}else{$Out}
                         }
                     }
-                Trend{[Array]$qFilter=@() ## /!\ Date filter /!\
-                    if($StartDate){$qFilter+="from=$($StartDate|ToBHDate)"}
-                    if($EndDate){$qFilter+="to=$($EndDate|ToBHDate)"}
-                    BHAPI api/v2/domains/$DomID/finding-trends -filter $qFilter
-                    }
+                Trend{$Null=$DomList.add($DomID)}
                 }}}
-    End{}#######
+    End{if($PSCmdlet.ParameterSetName -eq 'trend'){
+        [Array]$qFilter=@()
+        if($StartDate){$qFilter+="start=$($StartDate|ToBHDate)"}
+        if($EndDate){$qFilter+="end=$($EndDate|ToBHDate)"}
+        Foreach($Dom in $DomList){$qFilter+="environments=$Dom"}
+        BHAPI api/v2/attack-paths/finding-trends -Filter $qfilter -Expand Data
+        }}
     }
 #End
 
@@ -4956,17 +4957,20 @@ function Remove-BHEvent{
     Get BloodHound Data Posture
 .EXAMPLE
     Get-BHDataPosture
+.EXAMPLE
+    BHSearch Domain test | BHPosture -Exposure -StartDate (date).adddays(-30)
+
 #>
 function Get-BHDataPosture{
     [CmdletBinding(DefaultParameterSetName='General')]
     [Alias('BHPosture')]
     Param(
         [Parameter(Mandatory=1,ValueFromPipelineByPropertyName)][Alias('ID','ObjectID')][String[]]$DomainID,
-        [Parameter(ParameterSetName='Exposure')][Switch]$Exposure,
-        [Parameter(ParameterSetName='Finding')][Switch]$Findings,
-        [Parameter(ParameterSetName='Asset')][Switch]$Assets,
-        [Parameter(ParameterSetName='Group')][Switch]$GroupCompleteness,
-        [Parameter(ParameterSetName='Session')][Switch]$SessionCompleteness,
+        [Parameter(Mandatory=1,ParameterSetName='Exposure')][Switch]$Exposure,
+        [Parameter(Mandatory=1,ParameterSetName='Finding')][Switch]$Findings,
+        [Parameter(Mandatory=1,ParameterSetName='Asset')][Switch]$Assets,
+        [Parameter(Mandatory=1,ParameterSetName='Group')][Switch]$GroupCompleteness,
+        [Parameter(Mandatory=1,ParameterSetName='Session')][Switch]$SessionCompleteness,
         [Parameter(ParameterSetName='General')][Int]$Limit=1,
         [Parameter(ParameterSetName='Exposure')]
         [Parameter(ParameterSetName='Finding')]
@@ -4982,23 +4986,29 @@ function Get-BHDataPosture{
         [Parameter(ParameterSetName='General')][Alias('To')][Datetime]$EndDate
         )
     Begin{BHEOnly
+        $DomList = [Collections.ArrayList]@()
         [Array]$qFilter=@() ## /!\ Date filter /!\
-        if($StartDate){$qFilter+="from=$($StartDate|ToBHDate)"}
-        if($EndDate){$qFilter+="to=$($EndDate|ToBHDate)"}
+        if($StartDate){$qFilter+=if($PSCmdlet.ParameterSetName -eq 'General'){"from=$($StartDate|ToBHDate)"}else{"start=$($StartDate|ToBHDate)"}}
+        if($EndDate){$qFilter+=if($PSCmdlet.ParameterSetName -eq 'General'){"to=$($EndDate|ToBHDate)"}else{"end=$($EndDate|ToBHDate)"}}
         }
     Process{foreach($DomID in $DomainID){
         Switch($PSCmdlet.ParameterSetName){
             General {
                 $qFilter+="limit=$Limit"
-                BHAPI api/v2/posture-stats -filter $qFilter,"domain_sid=eq:$DomID" -expand data
+                $qfilter+="domain_sid=eq:$DomID"
+                BHAPI api/v2/posture-stats -filter $qFilter -expand data
                 }
-            Exposure{BHAPI api/v2/domains/$DomID/posture-history/exposure -Filter $qfilter -expand data}
-            Finding {BHAPI api/v2/domains/$DomID/posture-history/findings -Filter $qfilter -expand data}
-            Asset   {BHAPI api/v2/domains/$DomID/posture-history/assets -Filter $qfilter -expand data}
-            Group   {BHAPI api/v2/domains/$DomID/posture-history/group_completeness -Filter $qfilter -expand data}
-            Session {BHAPI api/v2/domains/$DomID/posture-history/session_completeness -Filter $qfilter -expand data}
+            Default{$Null=$DomList.add($DomID)}
             }}}
-    End{}###
+    End{Foreach($Dom in $DomList){$qFilter+="environments=$Dom"}
+        Switch($PSCmdlet.ParameterSetName){
+            Exposure{BHAPI api/v2/posture-history/exposure -Filter $qfilter -expand data}
+            Finding {BHAPI api/v2/posture-history/findings -Filter $qfilter -expand data}
+            Asset   {BHAPI api/v2/posture-history/assets -Filter $qfilter -expand data}
+            Group   {BHAPI api/v2/posture-history/group_completeness -Filter $qfilter -expand data}
+            Session {BHAPI api/v2/posture-history/session_completeness -Filter $qfilter -expand data}
+            }
+        }
     }
 #End
 

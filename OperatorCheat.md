@@ -1717,15 +1717,15 @@ See `Help Import-BHCollector` for more info
 ```PowerShell
 Get-BHDataPosture -DomainID <string[]> [-Limit <int>] [-StartDate <datetime>] [-EndDate <datetime>] 
 
-Get-BHDataPosture -DomainID <string[]> [-Exposure] [-StartDate <datetime>] [-EndDate <datetime>] 
+Get-BHDataPosture -DomainID <string[]> -Exposure [-StartDate <datetime>] [-EndDate <datetime>] 
 
-Get-BHDataPosture -DomainID <string[]> [-Findings] [-StartDate <datetime>] [-EndDate <datetime>] 
+Get-BHDataPosture -DomainID <string[]> -Findings [-StartDate <datetime>] [-EndDate <datetime>] 
 
-Get-BHDataPosture -DomainID <string[]> [-Assets] [-StartDate <datetime>] [-EndDate <datetime>] 
+Get-BHDataPosture -DomainID <string[]> -Assets [-StartDate <datetime>] [-EndDate <datetime>] 
 
-Get-BHDataPosture -DomainID <string[]> [-GroupCompleteness] [-StartDate <datetime>] [-EndDate <datetime>] 
+Get-BHDataPosture -DomainID <string[]> -GroupCompleteness [-StartDate <datetime>] [-EndDate <datetime>] 
 
-Get-BHDataPosture -DomainID <string[]> [-SessionCompleteness] [-StartDate <datetime>] [-EndDate <datetime>]
+Get-BHDataPosture -DomainID <string[]> -SessionCompleteness [-StartDate <datetime>] [-EndDate <datetime>]
 ```
 
 #### **Examples:**
@@ -3294,6 +3294,6 @@ See `Help Set-BHEvent` for more info
 
 </br>
 
-Monday, January 27, 2025 12:59:28 PM
+Monday, February 10, 2025 11:00:37 AM
 
 
