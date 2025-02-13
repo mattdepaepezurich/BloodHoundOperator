@@ -1735,6 +1735,11 @@ Get-BHDataPosture -DomainID <string[]> -SessionCompleteness [-StartDate <datetim
 
 PS > Get-BHDataPosture
 
+
+-------------------------- EXAMPLE 2 --------------------------
+
+PS > BHSearch Domain test | BHPosture -Exposure -StartDate (date).adddays(-30)
+
 ```
 
 See `Help BHPosture` for more info
@@ -2497,6 +2502,11 @@ PS > BHFinding -ListAvail -DomainID $ID
 -------------------------- EXAMPLE 3 --------------------------
 
 PS > BHFinding -Detail -DomainID $ID -Type Kerberoasting
+
+
+-------------------------- EXAMPLE 4 --------------------------
+
+PS > BHSearch Domain | BHFinding -Trend -Verbose -start (date).adddays(-10)
 
 ```
 
@@ -3294,6 +3304,6 @@ See `Help Set-BHEvent` for more info
 
 </br>
 
-Monday, February 10, 2025 11:00:37 AM
+Thursday, February 13, 2025 10:24:38 PM
 
 

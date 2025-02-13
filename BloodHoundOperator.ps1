@@ -1,7 +1,9 @@
 ## BloodHoundOperator
-# Monday, February 10, 2025 10:00:45 AM
+# Thursday, February 13, 2025 9:23:46 PM
 
-####################################################################
+# - Fix list avail finding
+
+##########################################################
 
 ## BloodHound Operator - BHComposer (BHCE Only)
 # New-BHComposer
@@ -390,6 +392,7 @@ function Invoke-BHAPI{
         if($URI -notmatch "^api/"){$URI='api/v2/'+$URI}
         if($filter){$qFilter = '?'+$($Filter.replace(' ','+')-join'&')
             $qfilter=[uri]::EscapeUriString($qFilter)
+            $qFilter=$qfilter.trimend('&')
             $URI=$URI+$qfilter
             }
         }
@@ -4388,7 +4391,7 @@ function Get-BHPathFinding{
         if($PSCmdlet.ParameterSetName -eq 'ListAll'){BHAPI api/v2/attack-path-types -expand data}
         }
     Process{Foreach($DomID in $DomainID){
-        $FindType = if(-Not$FindingType -AND -Not$PSCmdlet.ParameterSetName -eq 'trend'){BHAPI api/v2/domains/$DomID/available-types -expand data}else{$FindingType}
+        $FindType = if(-Not$FindingType){BHAPI api/v2/domains/$DomID/available-types -expand data}else{$FindingType}
         Switch($PSCmdlet.ParameterSetName){
                 Avail {$FindType}
                 Detail{[Array]$qFilter=@()
