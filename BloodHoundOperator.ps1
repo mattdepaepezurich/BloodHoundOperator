@@ -1,9 +1,10 @@
 ## BloodHoundOperator
-# Thursday, February 13, 2025 9:23:46 PM
+# Thursday, March 13, 2025 9:07:23 AM
+# > Add NTLM Edges
+# > Add Limited OwnerShip Edges
 
-# - Fix list avail finding
 
-##########################################################
+################################################################
 
 ## BloodHound Operator - BHComposer (BHCE Only)
 # New-BHComposer
@@ -427,7 +428,9 @@ function Invoke-BHAPI{
             else{$Headers = @{
                 Authorization = "Bearer $($Session.Token)"
                 }}
-            if($Timeout -ne $Null){$Headers.add('Prefer',$Timeout)}
+            if($Timeout -ne $Null){$Headers.add('Prefer',"wait=$Timeout")}
+            ## DEBUG
+            #RETURN $Headers
             # Verbose
             Write-verbose "[BH] $Method $URI"
             if($Body){Write-Verbose "$Body"}
@@ -781,7 +784,7 @@ function Get-BHSession{
 Function Set-BHSession{
     Param(
         [Parameter()][int]$Limit,
-        [ValidateRange(0,60)][Parameter()][int]$Timeout,
+        [ValidateRange(0,3600)][Parameter()][int]$Timeout,
         [Parameter()][Switch]$CypherClip,
         [Parameter()][Switch]$NoClip
         )
@@ -3129,6 +3132,7 @@ enum BHEdgeGroup{
     ADObjectBasic
     ADObjectAdvanced
     ADCertService
+    ADNTLMRelay
     # AZ
     AZStructure
     AZADObjectBasic
@@ -3173,9 +3177,11 @@ enum BHEdge{
     ForceChangePassword
     GenericAll
     Owns
+    OwnsLimitedRights
     GenericWrite
     WriteDacl
     WriteOwner
+    WriteOwnerLimitedRights
     # ADObjectAdvanced
     AddAllowedToAct
     AddKeyCredentialLink
@@ -3196,6 +3202,11 @@ enum BHEdge{
     ADCSESC13
     # X-Platform
     SyncedToEntraUser
+    # NTLMRelay
+    CoerceAndRelayNTLMToSMB
+    CoerceAndRelayNTLMToADCS
+    CoerceAndRelayNTLMToLDAP
+    CoerceAndRelayNTLMToLDAPS
     ## AZ
     # AZStructure
     AZAppAdmin
@@ -3297,9 +3308,11 @@ function Get-BHPathFilter{
         [PSCustomObject]@{Platform='AD'; Group='ADObjectBasic'; Edge='ForceChangePassword'}
         [PSCustomObject]@{Platform='AD'; Group='ADObjectBasic'; Edge='GenericAll'}
         [PSCustomObject]@{Platform='AD'; Group='ADObjectBasic'; Edge='Owns'}
+        [PSCustomObject]@{Platform='AD'; Group='ADObjectBasic'; Edge='OwnsLimitedRights'}
         [PSCustomObject]@{Platform='AD'; Group='ADObjectBasic'; Edge='GenericWrite'}
         [PSCustomObject]@{Platform='AD'; Group='ADObjectBasic'; Edge='WriteDacl'}
         [PSCustomObject]@{Platform='AD'; Group='ADObjectBasic'; Edge='WriteOwner'}
+        [PSCustomObject]@{Platform='AD'; Group='ADObjectBasic'; Edge='WriteOwnerLimitedRights'}
         # Obj Manipulation Advance
         [PSCustomObject]@{Platform='AD'; Group='ADObjectAdvanced'; Edge='AddAllowedToAct'}
         [PSCustomObject]@{Platform='AD'; Group='ADObjectAdvanced'; Edge='AddKeyCredentialLink'}
@@ -3320,6 +3333,11 @@ function Get-BHPathFilter{
         [PSCustomObject]@{Platform='AD'; Group='ADCertService'; Edge='ADCSESC13'}
         # X-Platform
         [PSCustomObject]@{Platform='AD'; Group='CrossPlatform'; Edge='SyncedToEntraUser'}
+        # NTLM Relay
+        [PSCustomObject]@{Platform='AD'; Group='ADNTLMRelay'; Edge='CoerceAndRelayNTLMToSMB'}
+        [PSCustomObject]@{Platform='AD'; Group='ADNTLMRelay'; Edge='CoerceAndRelayNTLMToADCS'}
+        [PSCustomObject]@{Platform='AD'; Group='ADNTLMRelay'; Edge='CoerceAndRelayNTLMToLDAP'}
+        [PSCustomObject]@{Platform='AD'; Group='ADNTLMRelay'; Edge='CoerceAndRelayNTLMToLDAPS'}
         ## AZ
         # Structure
         [PSCustomObject]@{Platform='AZ'; Group='AZStructure'; Edge='AZAppAdmin'}
@@ -3349,7 +3367,7 @@ function Get-BHPathFilter{
         [PSCustomObject]@{Platform='AZ'; Group='AZGraphRole'; Edge='AZMGGrantAppRoles'}
         [PSCustomObject]@{Platform='AZ'; Group='AZGraphRole'; Edge='AZMGGrantRole'}
         # Credential Access
-        [PSCustomObject]@{Platform='AZ'; Group='AZCredentialAccess'; Edge='AZGetCertficates'}
+        [PSCustomObject]@{Platform='AZ'; Group='AZCredentialAccess'; Edge='AZGetCertificates'}
         [PSCustomObject]@{Platform='AZ'; Group='AZCredentialAccess'; Edge='AZGetKeys'}
         [PSCustomObject]@{Platform='AZ'; Group='AZCredentialAccess'; Edge='AZGetSecrets'}
         # AzRM Object Manipulation Basic
@@ -3363,7 +3381,7 @@ function Get-BHPathFilter{
         # AzRM Object Manipulation Adavnced
         [PSCustomObject]@{Platform='AZ'; Group='AZRMObjectAdvanced'; Edge='AZAKSContributor'}
         [PSCustomObject]@{Platform='AZ'; Group='AZRMObjectAdvanced'; Edge='AZAutomationContributor'}
-        [PSCustomObject]@{Platform='AZ'; Group='AZRMObjectAdvanced'; Edge='AZogicAppContributor'}
+        [PSCustomObject]@{Platform='AZ'; Group='AZRMObjectAdvanced'; Edge='AZLogicAppContributor'}
         [PSCustomObject]@{Platform='AZ'; Group='AZRMObjectAdvanced'; Edge='AZWebsiteContributor'}
         # X-Platform
         [PSCustomObject]@{Platform='AZ'; Group='CrossPlatform'; Edge='SyncedToADUser'}
@@ -3372,8 +3390,13 @@ function Get-BHPathFilter{
     if($ListAll){if($BHFilter){$BHFilter}else{$EdgeList}}
     # Selected
     else{$SelectedEdge = $BHFilter | ? x
-        if($Cypher){':'+(($SelectedEdge.Edge|Sort-Object)-join'|')}
-        elseif($String){($SelectedEdge.Edge|Sort-Object)-join','}
+        if($Cypher){
+            $Str=':'+(($SelectedEdge.Edge|Sort-Object)-join'|')
+            if(($BHSession|? x).CypherClip){try{$Str|Set-Clipboard}Catch{}}
+            $str
+            }
+        #elseif($String){($SelectedEdge.Edge|Sort-Object)-join','}
+        elseif($String){"'"+(($SelectedEdge.Edge|Sort-Object)-join"','")+"'"}
         else{$SelectedEdge}
         }}
 #####End
@@ -4391,7 +4414,7 @@ function Get-BHPathFinding{
         if($PSCmdlet.ParameterSetName -eq 'ListAll'){BHAPI api/v2/attack-path-types -expand data}
         }
     Process{Foreach($DomID in $DomainID){
-        $FindType = if(-Not$FindingType){BHAPI api/v2/domains/$DomID/available-types -expand data}else{$FindingType}
+        if($PSCmdlet.ParameterSetName -ne 'trend'){$FindType = if(-Not$FindingType){BHAPI api/v2/domains/$DomID/available-types -expand data}else{$FindingType}}
         Switch($PSCmdlet.ParameterSetName){
                 Avail {$FindType}
                 Detail{[Array]$qFilter=@()
@@ -4413,7 +4436,7 @@ function Get-BHPathFinding{
         if($StartDate){$qFilter+="start=$($StartDate|ToBHDate)"}
         if($EndDate){$qFilter+="end=$($EndDate|ToBHDate)"}
         Foreach($Dom in $DomList){$qFilter+="environments=$Dom"}
-        BHAPI api/v2/attack-paths/finding-trends -Filter $qfilter -Expand Data
+        BHAPI api/v2/attack-paths/finding-trends -Filter $qfilter -Expand Data.findings
         }}
     }
 #End
@@ -5008,8 +5031,8 @@ function Get-BHDataPosture{
             Exposure{BHAPI api/v2/posture-history/exposure -Filter $qfilter -expand data}
             Finding {BHAPI api/v2/posture-history/findings -Filter $qfilter -expand data}
             Asset   {BHAPI api/v2/posture-history/assets -Filter $qfilter -expand data}
-            Group   {BHAPI api/v2/posture-history/group_completeness -Filter $qfilter -expand data}
-            Session {BHAPI api/v2/posture-history/session_completeness -Filter $qfilter -expand data}
+            Group   {BHAPI api/v2/posture-history/group-completeness -Filter $qfilter -expand data}
+            Session {BHAPI api/v2/posture-history/session-completeness -Filter $qfilter -expand data}
             }
         }
     }
